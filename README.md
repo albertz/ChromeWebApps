@@ -22,6 +22,13 @@ Usage
 * In Chrome, browse to some site which you want to turn into an app.
 * From the "Python" menu in Chrome, select "make webapp". This creates a new app bundle for the web app (in the directory `~/Library/Application Support/ChromeWebApps/Apps/`) and starts it. The app bundle is linked to a window in Chrome which represents the web-app.
 
+Internals
+---------
+
+* `install_web_apps.py` does all the hard work. When initially run by Pyjector, it will setup all the event hooks, the menu and an AppleEvent handler in Chrome.
+* The dock icon helper app and Chrome are communicating via the AppleEvent.
+* ... (see the source)
+
 Future
 ------
 
