@@ -5,13 +5,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
-	<string>test.sh</string>
+	<string>main.py</string>
 	<key>CFBundleGetInfoString</key>
-	<string>KisMAC 0.3.3, © 2002-2011 Geoffrey Kruse &amp; KisMAC Community</string>
-	<key>CFBundleHelpBookFolder</key>
-	<string>KisMACHelp</string>
-	<key>CFBundleHelpBookName</key>
-	<string>KisMAC Help</string>
+	<string>$CFBundleGetInfoString</string>
 	<key>CFBundleIconFile</key>
 	<string>devil.icns</string>
 	<key>CFBundleIdentifier</key>
@@ -25,11 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>KisMAC 0.3.3</string>
 	<key>CFBundleSignature</key>
-	<string>BIKM</string>
-	<key>CFBundleVersion</key>
-	<string>0.3.3</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>10.6.0</string>
+	<string>????</string>
 	<key>NSAppleScriptEnabled</key>
 	<string>YES</string>
 	<key>NSMainNibFile</key>
