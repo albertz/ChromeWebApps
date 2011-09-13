@@ -3,6 +3,11 @@
 import sys, time, os, os.path
 
 import objc
+sharedApplication = objc.lookUpClass("NSApplication").sharedApplication()
+
+if sharedApplication.bundle().bundleIdentifier() != "com.google.Chrome.framework":
+	raise Exception, "not Chrome"
+
 NSObject = objc.lookUpClass("NSObject")
 NSAutoreleasePool = objc.lookUpClass("NSAutoreleasePool")
 NSScriptCommand = objc.lookUpClass("NSScriptCommand")
@@ -10,6 +15,7 @@ NSThread = objc.lookUpClass("NSThread")
 NSWindow = objc.lookUpClass("NSWindow")
 app = objc.lookUpClass("NSApplication").sharedApplication()
 _NSThemeCloseWidget = objc.lookUpClass("_NSThemeCloseWidget")
+NSMenuItem = objc.lookUpClass("NSMenuItem")
 
 try:
 	class PyAsyncCallHelper(NSObject):
@@ -283,13 +289,6 @@ def hook_into_commandDispatchForContr():
 
 def hook_into_commandDispatch():
 	method_exchange("BrowserWindowController", "commandDispatch:", "myCommandDispatch:")
-
-# it seems, for openWebApp, we need:
-# * hook_into_windowShouldClose, for when we click on the window closebutton
-# * hook_into_commandDispatch, for when we use the NSMenu (or key shortcut)
-def install_webapp_handlers():
-	hook_into_windowShouldClose()
-	hook_into_commandDispatch()
 	
 capi.backtrace.restype = c_int
 capi.backtrace.argtypes = (c_void_p, c_int)
@@ -302,4 +301,88 @@ def capi_backtrace():
 	c = capi.backtrace(addressof(tracePtrs), N)
 	capi.backtrace_symbols_fd(addressof(tracePtrs), c, sys.stdout.fileno())
 
+
+sharedScriptSuiteReg = objc.lookUpClass("NSScriptSuiteRegistry").sharedScriptSuiteRegistry()
+NSScriptCommandDescription = objc.lookUpClass("NSScriptCommandDescription")
+sharedAppleEventMgr = objc.lookUpClass("NSAppleEventManager").sharedAppleEventManager()
+NSAppleEventDescriptor = objc.lookUpClass("NSAppleEventDescriptor")
+
+from PyObjCTools.TestSupport import fourcc
+
+def register_scripting():
+	cmdDesc = NSScriptCommandDescription.alloc().initWithSuiteName_commandName_dictionary_(
+		"Chromium Suite",
+		"exec Python",
+		{
+			"Name": "exec Python",
+			"CommandClass": "NSScriptCommand", # default behavior
+			"AppleEventCode": "ExPy", # 4-char code
+			"AppleEventClassCode": "CrSu",
+			"Type": "NSString", # return-type
+			"ResultAppleEventCode": "ctxt", # return-type
+			"Arguments": {
+				#"----": {
+				#	"Type": "NSString",
+				#	"AppleEventCode": "comm"
+				#}
+			}
+		}
+	)
+	assert cmdDesc is not None
+	sharedScriptSuiteReg.registerCommandDescription_(cmdDesc)
+
+	sharedAppleEventMgr.setEventHandler_andSelector_forEventClass_andEventID_(
+		appScriptHandler, appScriptHandler.handleExecPy,
+		fourcc("CrSu"), fourcc("ExPy"))
+	
+def handleExecPy(self, ev, replyEv):
+	print "execPython called,",
+	cmd = ev.descriptorForKeyword_(fourcc("comm")).stringValue()
+	print "cmd:", repr(cmd)
+	res = eval(cmd)
+	res = unicode(res)
+	replyEv.setDescriptor_forKeyword_(NSAppleEventDescriptor.descriptorWithString_(res), fourcc("----"))
+	return True
+
+try:
+	class AppScriptHandler(NSObject):
+		def handleExecPy(self, ev, replyEv):
+			try: return handleExecPy(self, ev, replyEv)
+			except: print "Exception:", sys.exc_info()
+			return
+except:
+	AppScriptHandler = objc.lookUpClass("AppScriptHandler")
+appScriptHandler = AppScriptHandler.alloc().init()
+
+def make_webapp():
+	print >>sys.stderr, "make webapp"
+	pass
+
+try:
+	class PyMenuHandler(NSObject):
+		@my_signature("v12@0:4@8")
+		def makeWebapp_(self, sender):
+			try: return make_webapp()
+			except: print >>sys.stderr, "Exception:", sys.exc_info()
+except:
+	PyMenuHandler = objc.lookUpClass("PyMenuHandler")
+pyMenuHandler = PyMenuHandler.alloc().init()
+
+def install_menu():
+	mainMenu = sharedApplication.mainMenu()
+	pyMenu = [ m for m in mainMenu.itemArray() if m.title() == "Python" ][0]
+	menuItem = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("make webapp", "makeWebapp:", "")
+	menuItem.setTarget_(pyMenuHandler)
+	pyMenu.submenu().insertItem_atIndex_(menuItem, 0)
+	
+# it seems, for openWebApp, we need:
+# * hook_into_windowShouldClose, for when we click on the window closebutton
+# * hook_into_commandDispatch, for when we use the NSMenu (or key shortcut)
+def install_webapp_handlers():
+	hook_into_windowShouldClose()
+	hook_into_commandDispatch()
+	register_scripting()
+	install_menu()
+	print >>sys.stderr, "webapp handlers installed"
+	
 install_webapp_handlers()
