@@ -61,6 +61,10 @@ def createAppBundle(apppath, pyfile, props):
 	oldmode = os.stat(apppath + "/Contents/MacOS/main.py").st_mode
 	os.chmod(apppath + "/Contents/MacOS/main.py", oldmode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
+	# clear quarantine. Chrome has set such a thing because it thinks the file was downloaded
+	import LaunchServices
+	LaunchServices.LSSetItemAttribute(apppath, LaunchServices.kLSRolesAll, LaunchServices.kLSItemQuarantineProperties, None)
+	
 if __name__ == '__main__':
 	assert len(sys.argv) > 3
 	
