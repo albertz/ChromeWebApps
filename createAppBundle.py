@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-# example: /createAppBundle.py foo.app dockicon.py "{'CFBundleIdentifier':'org.foo.foo','CFBundleName':'Foo'}"
+# example: ./createAppBundle.py foo.app dockicon.py "{'CFBundleIdentifier':'org.foo.foo','CFBundleName':'Foo', 'WebAppURL':'http://www.google.com'}"
 
 import sys, os, os.path
 

@@ -3,8 +3,12 @@
 # http://codesearch.google.com/#u_9_nDrchrw/pygame-1.7.1release/lib/macosx.py&ct=rc&cd=6&q=GetCurrentProcess%20ApplicationServices%20%20file:.py
 # http://codesearch.google.com/#TjZxI4W0_Cw/trunk/cocos/audio/SDL/darwin.py&ct=rc&cd=2&q=GetCurrentProcess%20ApplicationServices%20%20file:.py
 
-import os, sys
+import os, os.path, sys
 from pprint import pprint
+
+bundlePath = os.path.dirname(__file__) + "/../.."
+
+#sys.stdout = sys.stderr # direct output in Console
 
 import signal
 signal.signal(signal.SIGABRT, lambda *args: os._exit(1))
@@ -13,6 +17,32 @@ signal.signal(signal.SIGPIPE, lambda *args: os._exit(1))
 from Foundation import *
 from AppKit import *
 import objc
+
+bundleInfoDict = NSBundle.bundleWithPath_(bundlePath).infoDictionary()
+webAppURL = bundleInfoDict["WebAppURL"]
+
+import aem
+
+chromeApp = None
+
+def connectToChrome():
+	global chromeApp
+	fullpath = aem.findapp.byname("Google Chrome")
+	chromeApp = aem.Application(fullpath)
+	
+def execPy(cmd):
+	global chromeApp
+	if chromeApp is None: connectToChrome()
+	try:
+		return chromeApp.event("CrSuExPy", {"comm": cmd}).send()
+	except:
+		# maybe connection to Chrome was lost. try to reconnect
+		chromeApp = None
+		connectToChrome()
+		return chromeApp.event("CrSuExPy", {"comm": cmd}).send()
+		
+def openPopupWindow(url):
+	execPy("openPopupWindow(%s)" % repr(url))
 
 def setIcon(baseurl):
 	url = NSURL.URLWithString_relativeToURL_("/favicon.ico", NSURL.URLWithString_(baseurl))
@@ -26,9 +56,10 @@ class MyAppDelegate(NSObject):
 		try:
 			print "click"
 			sys.stdout.flush()
+			openPopupWindow(webAppURL)
 		except: # eg. sigpipe
 			sys.excepthook(*sys.exc_info())
-			os._exit(1)
+			#os._exit(1)
 			
 	def applicationDidFinishLaunching_(self, notification):
 		menu = NSMenu.alloc().init()
@@ -42,11 +73,12 @@ class MyAppDelegate(NSObject):
 		
 		app.setMainMenu_(NSMenu.alloc().init())
 		app.mainMenu().addItem_(windowMenuItem)
-		
-		try: setIcon(sys.argv[1])
+				
+		try: setIcon(webAppURL)
 		except: pass
 		
 		print "Dock icon initialized"
+		openPopupWindow(webAppURL)
 		
 	def open_window(self):
 		self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(

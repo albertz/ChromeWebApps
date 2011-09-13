@@ -38,6 +38,18 @@ def do_in_mainthread(f, wait=True):
 	helper.performSelectorOnMainThread_withObject_waitUntilDone_(helper.call_, None, wait)
 	return helper.ret
 
+def do_in_otherthread(f):
+	import threading
+	class ThreadWorker(threading.Thread):
+		def __init__(self):
+			super(ThreadWorker, self).__init__()
+			self.setDaemon(True)
+		def run(self):
+			f()
+	worker = ThreadWorker()
+	worker.start()
+	return # we cannot wait, otherwise we would block the current thread and make the whole threading senseless
+
 def fsbrowse(obj):
 	objc.lookUpClass("FSInterpreter").interpreter().browse_(obj)
 	
@@ -78,7 +90,9 @@ def message_via_html(title, msg, open_callback):
 	return ret
 
 def openPopupWindow(url):
-	assert not isMainThread()
+	if isMainThread():
+		do_in_otherthread(lambda: openPopupWindow(url))
+		return
 	def open_window():
 		o = WindowAppleScript.alloc().init()
 		w = o.nativeHandle()
@@ -356,16 +370,8 @@ registeredWebApps = {} # webappid -> window
 def openWebApp(url):
 	if isMainThread():
 		# this function is supposed to not run in the main thread
-		import threading
-		class ThreadWorker(threading.Thread):
-			def __init__(self):
-				super(ThreadWorker, self).__init__()
-				self.setDaemon(True)
-			def run(self):
-				openWebApp(url)
-		worker = ThreadWorker()
-		worker.start()
-		return # we cannot wait, otherwise we would block the main thread
+		do_in_otherthread(lambda: openWebApp(url))
+		return
 	w = openPopupWindow(url)
 	w = w.nativeHandle()
 	def dock_click_handler():
