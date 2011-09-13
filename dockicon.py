@@ -3,7 +3,7 @@
 # http://codesearch.google.com/#u_9_nDrchrw/pygame-1.7.1release/lib/macosx.py&ct=rc&cd=6&q=GetCurrentProcess%20ApplicationServices%20%20file:.py
 # http://codesearch.google.com/#TjZxI4W0_Cw/trunk/cocos/audio/SDL/darwin.py&ct=rc&cd=2&q=GetCurrentProcess%20ApplicationServices%20%20file:.py
 
-import os, os.path, sys
+import os, os.path, sys, time
 from pprint import pprint
 
 bundlePath = os.path.dirname(__file__) + "/../.."
@@ -29,22 +29,24 @@ def connectToChrome():
 	fullpath = aem.findapp.byname("Google Chrome")
 	chromeApp = aem.Application(fullpath)
 	
-def execPy(cmd):
+def execPy(cmd, tryToReconnect=False):
 	global chromeApp
 	if chromeApp is None: connectToChrome()
 	try:
 		return chromeApp.event("CrSuExPy", {"comm": cmd}).send()
 	except:
+		if not tryToReconnect: return
 		# maybe connection to Chrome was lost. try to reconnect
 		chromeApp = None
 		connectToChrome()
+		time.sleep(2) # wait a bit. Chrome needs to register our AppleEvent first
 		return chromeApp.event("CrSuExPy", {"comm": cmd}).send()
 		
 def openPopupWindow(url):
 	execPy("openPopupWindow(%s)" % repr(url))
 
 def onDockClick():
-	execPy("onDockClick(%s, %s)" % (repr(webAppId), repr(webAppURL)))
+	execPy("onDockClick(%s, %s)" % (repr(webAppId), repr(webAppURL)), tryToReconnect=True)
 
 def onExit():
 	execPy("onDockExit(%s)" % repr(webAppId))

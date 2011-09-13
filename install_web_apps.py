@@ -390,21 +390,22 @@ def getActiveUrl():
 
 registeredWebApps = {} # webappid -> window
 
-def openWebApp(url):
+def openWebApp(url, webappid=None):
 	if isMainThread():
 		# this function is supposed to not run in the main thread
-		do_in_otherthread(lambda: openWebApp(url))
+		do_in_otherthread(lambda: openWebApp(url, webappid))
 		return
 	
 	w = openPopupWindow(url)
-	title = ""
-	for _ in xrange(10):
-		title = w.activeTab().title()
-		if title: break
-		time.sleep(1) # wait a bit and try again
-	webappid = url + " " + str(time.time())
 	
-	make_dock_icon(title, webappid, url)
+	if webappid is None:
+		title = ""
+		for _ in xrange(10):
+			title = w.activeTab().title()
+			if title: break
+			time.sleep(1) # wait a bit and try again
+		webappid = url + " " + str(time.time())
+		make_dock_icon(title, webappid, url)
 
 	w = w.nativeHandle()
 	registeredWebApps[webappid] = w
@@ -417,6 +418,7 @@ def openWebApp(url):
 		return False
 	install_close_callback(w, w_close_handler)
 	
+	w.delegate().activate()
 	return w
 
 def make_webapp():
@@ -428,7 +430,8 @@ def make_webapp():
 
 def onDockClick(webappid, url):
 	if not webappid in registeredWebApps:
-		# TODO: create...
+		# recreate with that webappid
+		openWebApp(url, webappid=webappid)
 		return
 	w = registeredWebApps[webappid]
 	w.setIsVisible_(1)
