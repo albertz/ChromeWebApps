@@ -1,20 +1,26 @@
 #!/usr/bin/python
 
-import sys
-assert len(sys.argv) > 1
+import sys, os, os.path
+
+assert len(sys.argv) > 3
 
 apppath = sys.argv[1]
-
-import os, os.path
 assert os.path.splitext(apppath)[1] == ".app"
+
+pyfile = sys.argv[2]
+assert os.path.isfile(pyfile)
+
+props = eval(sys.argv[3])
+assert isinstance(props, dict)
+assert "CFBundleIdentifier" in props
+assert "CFBundleName" in props
+if "CFBundleVersion" not in props: props["CFBundleVersion"] = "1.0.0"
+if "CFBundleShortVersionString" not in props: props["CFBundleShortVersionString"] = props["CFBundleName"] + " " + props["CFBundleVersion"]
+if "CFBundleGetInfoString" not in props: props["CFBundleGetInfoString"] = props["CFBundleShortVersionString"]
 
 os.mkdir(apppath)
 os.mkdir(apppath + "/Contents")
 os.mkdir(apppath + "/Contents/MacOS")
-
-version = "1.0.0"
-bundleName = "Test"
-bundleIdentifier = "org.test.test"
 
 f = open(apppath + "/Contents/Info.plist", "w")
 f.write("""<?xml version="1.0" encoding="UTF-8"?>
@@ -25,33 +31,28 @@ f.write("""<?xml version="1.0" encoding="UTF-8"?>
 	<string>English</string>
 	<key>CFBundleExecutable</key>
 	<string>main.py</string>
-	<key>CFBundleGetInfoString</key>
-	<string>%s</string>
 	<key>CFBundleIconFile</key>
 	<string>app.icns</string>
-	<key>CFBundleIdentifier</key>
-	<string>%s</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>%s</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>%s</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>%s</string>
 	<key>NSAppleScriptEnabled</key>
 	<string>YES</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<string>NSApplication</string>""")
+for k,v in props.iteritems():
+	f.write("""
+	<key>%s</key>
+	<string>%s</string>""" % (k,v))
+f.write("""
 </dict>
 </plist>
-""" % (bundleName + " " + version, bundleIdentifier, bundleName, bundleName + " " + version, version))
+""")
 f.close()
 
 f = open(apppath + "/Contents/PkgInfo", "w")
@@ -59,9 +60,7 @@ f.write("APPL????")
 f.close()
 
 f = open(apppath + "/Contents/MacOS/main.py", "w")
-f.write("""#!/usr/bin/python
-print "Hi there"
-""")
+f.write(open(pyfile, "r").read()) # just copy the whole file
 f.close()
 
 import stat
