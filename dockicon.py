@@ -81,7 +81,8 @@ class MyAppDelegate(NSObject):
 		except: pass
 		
 		print "Dock icon initialized"
-	
+		onDockClick()
+
 	def applicationWillTerminate_(self, sender):
 		try:
 			onExit()
