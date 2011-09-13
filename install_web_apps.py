@@ -1,6 +1,6 @@
 # see https://github.com/albertz/chromehacking for more background
 
-import sys, time, os, os.path
+import sys, time, os, os.path, traceback
 
 import objc
 sharedApplication = objc.lookUpClass("NSApplication").sharedApplication()
@@ -16,6 +16,7 @@ NSWindow = objc.lookUpClass("NSWindow")
 app = objc.lookUpClass("NSApplication").sharedApplication()
 _NSThemeCloseWidget = objc.lookUpClass("_NSThemeCloseWidget")
 NSMenuItem = objc.lookUpClass("NSMenuItem")
+HoverCloseButton = objc.lookUpClass("HoverCloseButton")
 
 try:
 	class PyAsyncCallHelper(NSObject):
@@ -28,7 +29,10 @@ try:
 except:
 	PyAsyncCallHelper = objc.lookUpClass("PyAsyncCallHelper") # already defined earlier
 
+def isMainThread(): return NSThread.isMainThread()
+
 def do_in_mainthread(f, wait=True):
+	if isMainThread(): return f()
 	helper = PyAsyncCallHelper.alloc().initWithArgs_(f)
 	helper.performSelectorOnMainThread_withObject_waitUntilDone_(helper.call_, None, wait)
 	return helper.ret
@@ -72,8 +76,6 @@ def message_via_html(title, msg, open_callback):
 		
 	return ret
 
-def isMainThread(): return NSThread.isMainThread()
-
 def openPopupWindow(url):
 	assert not isMainThread()
 	def open_window():
@@ -100,13 +102,18 @@ def openPopupWindow(url):
 			while tabs[0].URL() is None: time.sleep(0.001)				
 			if dummyurl == tabs[0].URL(): return w
 	w = find_window()
+	if w is None:
+		time.sleep(1)
+		w = find_window() # just try again
 	assert w is not None
 	do_in_mainthread(lambda: w.tabs()[0].setURL_(url))
 	return w
 
 def make_dock_icon(baseurl, click_handler, quit_handler):
 	from subprocess import Popen, PIPE, STDOUT
-	scriptfn = os.path.dirname(__file__) + "/dockicon.py"
+	myscript = __file__
+	if os.path.islink(myscript): myscript = os.readlink(myscript)
+	scriptfn = os.path.dirname(myscript) + "/dockicon.py"
 	p = Popen(["python", scriptfn, baseurl], stdin=PIPE, stdout=PIPE)
 
 	import threading
@@ -122,7 +129,7 @@ def make_dock_icon(baseurl, click_handler, quit_handler):
 				if not l: break
 				if l == "click":
 					try: click_handler()
-					except: sys.excepthook(*sys.exc_info())
+					except: traceback.print_exc()
 			p.wait()
 			self.quit_handler()
 			
@@ -230,7 +237,8 @@ class BrowserWindowController(objc.Category(BrowserWindowController)):
 
 	@my_signature(commandDispatchSig)
 	def myCommandDispatch_(self, cmd):
-		print "myCommandDispatch_", self, cmd
+		try: print "myCommandDispatch_", self, cmd
+		except: pass # like <type 'exceptions.UnicodeEncodeError'>: 'ascii' codec can't encode character u'\u2026' in position 37: ordinal not in range(128)
 		if cmd.tag() == 34015: # IDC_CLOSE_TAB
 			if not check_close_callback(self): return			
 		self.myCommandDispatch_(cmd)
@@ -246,7 +254,8 @@ class TabStripController(objc.Category(TabStripController)):
 
 	@my_signature(commandDispatchForContrSig)
 	def myCommandDispatch_forController_(self, cmd, controller):
-		print "myCommandDispatch_forController_", self, cmd, controller
+		try: print "myCommandDispatch_forController_", self, cmd, controller
+		except: pass # like <type 'exceptions.UnicodeEncodeError'>: 'ascii' codec can't encode character u'\u2026' in position 37: ordinal not in range(128)
 		self.myCommandDispatch_forController_(cmd, controller)
 	
 from ctypes import *
@@ -348,22 +357,42 @@ try:
 	class AppScriptHandler(NSObject):
 		def handleExecPy(self, ev, replyEv):
 			try: return handleExecPy(self, ev, replyEv)
-			except: print "Exception:", sys.exc_info()
+			except: traceback.print_exc()
 			return
 except:
 	AppScriptHandler = objc.lookUpClass("AppScriptHandler")
 appScriptHandler = AppScriptHandler.alloc().init()
 
+def getActiveUrl():
+	frameWins = [ w for w in app.orderedWindows() if isinstance(w, FramedBrowserWindow) and w.isVisible() ]
+	if len(frameWins) == 0: return None
+	mainWin = frameWins[0]
+	for w in app.appleScriptWindows():
+		if w.nativeHandle() is mainWin:
+			return w.activeTab().URL()
+
 def make_webapp():
-	print >>sys.stderr, "make webapp"
-	pass
+	url = getActiveUrl()
+	if not url:
+		print >>sys.stderr, "no active URL found"
+		return
+	# this function is supposed to not run in the main thread
+	import threading
+	class ThreadWorker(threading.Thread):
+		def __init__(self):
+			super(ThreadWorker, self).__init__()
+			self.setDaemon(True)
+		def run(self):
+			openWebApp(url)
+	worker = ThreadWorker()
+	worker.start()
 
 try:
 	class PyMenuHandler(NSObject):
 		@my_signature("v12@0:4@8")
 		def makeWebapp_(self, sender):
 			try: return make_webapp()
-			except: print >>sys.stderr, "Exception:", sys.exc_info()
+			except: traceback.print_exc()
 except:
 	PyMenuHandler = objc.lookUpClass("PyMenuHandler")
 pyMenuHandler = PyMenuHandler.alloc().init()
@@ -384,5 +413,6 @@ def install_webapp_handlers():
 	register_scripting()
 	install_menu()
 	print >>sys.stderr, "webapp handlers installed"
-	
-install_webapp_handlers()
+
+if __name__ == '__main__':
+	install_webapp_handlers()
