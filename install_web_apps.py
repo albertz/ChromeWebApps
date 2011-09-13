@@ -142,27 +142,6 @@ def make_dock_icon(baseurl, click_handler, quit_handler):
 	p.kill = kill_overwrite
 	return p
 
-def openWebApp(url):
-	w = openPopupWindow(url)
-	def dock_click_handler():
-		w.nativeHandle().setIsVisible_(1)
-		w.nativeHandle().delegate().activate()
-	def dock_quit_handler():
-		w.nativeHandle().close()
-	p = make_dock_icon(url, lambda: do_in_mainthread(dock_click_handler), lambda: do_in_mainthread(dock_quit_handler))
-	def w_close_handler():
-		if p.returncode is not None:
-			remove_close_callback(w.nativeHandle())
-			return True
-		w.nativeHandle().setIsVisible_(0)
-		return False
-	install_close_callback(w.nativeHandle(), w_close_handler)
-	return w
-
-def openGMail():
-	return openWebApp("http://mail.google.com")
-	
-
 def find_close_widget(w):
 	if isinstance(w, WindowAppleScript): w = w.nativeHandle()
 	contentView = w.contentView()
@@ -372,21 +351,56 @@ def getActiveUrl():
 		if w.nativeHandle() is mainWin:
 			return w.activeTab().URL()
 
+registeredWebApps = {} # webappid -> window
+
+def openWebApp(url):
+	if isMainThread():
+		# this function is supposed to not run in the main thread
+		import threading
+		class ThreadWorker(threading.Thread):
+			def __init__(self):
+				super(ThreadWorker, self).__init__()
+				self.setDaemon(True)
+			def run(self):
+				openWebApp(url)
+		worker = ThreadWorker()
+		worker.start()
+		return # we cannot wait, otherwise we would block the main thread
+	w = openPopupWindow(url)
+	w = w.nativeHandle()
+	def dock_click_handler():
+		w.setIsVisible_(1)
+		w.delegate().activate()
+	def dock_quit_handler():
+		w.close()
+	p = make_dock_icon(url, lambda: do_in_mainthread(dock_click_handler), lambda: do_in_mainthread(dock_quit_handler))
+	def w_close_handler():
+		# if the dock icon helper app exited, we can close the window
+		if p.returncode is not None:
+			remove_close_callback(w)
+			return True
+		w.setIsVisible_(0)
+		return False
+	install_close_callback(w, w_close_handler)
+	webappid = url + " " + str(time.time())
+	registeredWebApps[webappid] = w
+	return w
+
 def make_webapp():
 	url = getActiveUrl()
 	if not url:
 		print >>sys.stderr, "no active URL found"
 		return
-	# this function is supposed to not run in the main thread
-	import threading
-	class ThreadWorker(threading.Thread):
-		def __init__(self):
-			super(ThreadWorker, self).__init__()
-			self.setDaemon(True)
-		def run(self):
-			openWebApp(url)
-	worker = ThreadWorker()
-	worker.start()
+	openWebApp(url)
+
+def onDockClick(webappid):
+	w = registeredWebApps[webappid]
+	w.setIsVisible_(1)
+	w.delegate().activate()
+
+def onDockExit(webappid):
+	w = registeredWebApps[webappid]
+	w.close()	
 
 try:
 	class PyMenuHandler(NSObject):
@@ -399,7 +413,7 @@ except:
 pyMenuHandler = PyMenuHandler.alloc().init()
 
 def install_menu():
-	mainMenu = sharedApplication.mainMenu()
+	mainMenu = app.mainMenu()
 	pyMenu = [ m for m in mainMenu.itemArray() if m.title() == "Python" ][0]
 	menuItem = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("make webapp", "makeWebapp:", "")
 	menuItem.setTarget_(pyMenuHandler)
