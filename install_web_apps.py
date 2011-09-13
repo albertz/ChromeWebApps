@@ -23,6 +23,7 @@ app = objc.lookUpClass("NSApplication").sharedApplication()
 _NSThemeCloseWidget = objc.lookUpClass("_NSThemeCloseWidget")
 NSMenuItem = objc.lookUpClass("NSMenuItem")
 HoverCloseButton = objc.lookUpClass("HoverCloseButton")
+AppController = objc.lookUpClass("AppController")
 
 try:
 	class PyAsyncCallHelper(NSObject):
@@ -226,6 +227,11 @@ def check_close_callback(o):
 		remove_close_callback(o)
 	return True
 
+def visibleBrowserWindows():
+	ws = app.appleScriptWindows()
+	ws = [ w for w in ws if w.nativeHandle().isVisible() ]
+	return ws
+
 # copied from objc.signature to avoid warning
 def my_signature(signature, **kw):
     from objc._objc import selector
@@ -234,6 +240,15 @@ def my_signature(signature, **kw):
         return selector(func, **kw)
     return makeSignature
 
+appShouldHandleReopenSig = "c16@0:4@8c12"
+class AppController(objc.Category(AppController)):
+	@my_signature(appShouldHandleReopenSig)
+	def myApplicationShouldHandleReopen_hasVisibleWindows_(self, app, flag):
+		try: print "myApplicationShouldHandleReopen", self, app, flag
+		except: pass
+		flag = flag and bool(visibleBrowserWindows()) # overwrite
+		return self.myApplicationShouldHandleReopen_hasVisibleWindows_(app, flag) # this is no recursion when we exchanged the methods
+	
 performCloseSig = "v12@0:4@8" # FramedBrowserWindow.performClose_
 class FramedBrowserWindow(objc.Category(FramedBrowserWindow)):
 	@my_signature(performCloseSig)
@@ -315,7 +330,10 @@ def hook_into_commandDispatchForContr():
 
 def hook_into_commandDispatch():
 	method_exchange("BrowserWindowController", "commandDispatch:", "myCommandDispatch:")
-	
+
+def hook_into_appShouldReopen():
+	method_exchange("AppController", "applicationShouldHandleReopen:hasVisibleWindows:", "myApplicationShouldHandleReopen:hasVisibleWindows:")
+
 capi.backtrace.restype = c_int
 capi.backtrace.argtypes = (c_void_p, c_int)
 capi.backtrace_symbols_fd.restype = None
@@ -466,6 +484,7 @@ def install_menu():
 def install_webapp_handlers():
 	hook_into_windowShouldClose()
 	hook_into_commandDispatch()
+	hook_into_appShouldReopen()
 	register_scripting()
 	install_menu()
 	print >>sys.stderr, "webapp handlers installed"
