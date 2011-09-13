@@ -1,13 +1,14 @@
 # see https://github.com/albertz/chromehacking for more background
 
+import sys
+print >>sys.stderr, "init in install_web_apps.py", sys.argv
+if sys.argv[1] != "com.google.Chrome":
+	print >>sys.stderr, "exiting, not Chrome"	
+	sys.exit()
+
 import sys, time, os, os.path, traceback
 
 import objc
-sharedApplication = objc.lookUpClass("NSApplication").sharedApplication()
-
-if sharedApplication.bundle().bundleIdentifier() != "com.google.Chrome.framework":
-	raise Exception, "not Chrome"
-
 NSObject = objc.lookUpClass("NSObject")
 NSAutoreleasePool = objc.lookUpClass("NSAutoreleasePool")
 NSScriptCommand = objc.lookUpClass("NSScriptCommand")
