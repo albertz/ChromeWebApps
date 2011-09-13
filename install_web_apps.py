@@ -8,6 +8,11 @@ if sys.argv[1] != "com.google.Chrome":
 
 import sys, time, os, os.path, traceback
 
+# do that global and right here so that we don't loose __file__ later on
+myscript = __file__
+if os.path.islink(myscript): myscript = os.readlink(myscript)
+sys.path.append(os.path.dirname(myscript)) # so we can import from there
+
 import objc
 NSObject = objc.lookUpClass("NSObject")
 NSAutoreleasePool = objc.lookUpClass("NSAutoreleasePool")
@@ -116,45 +121,63 @@ def openPopupWindow(url):
 			if len(tabs) == 0: continue
 			while tabs[0].URL() is None: time.sleep(0.001)				
 			if dummyurl == tabs[0].URL(): return w
-	w = find_window()
-	if w is None:
+	for _ in xrange(10):
+		w = find_window()
+		if w is not None: break
 		time.sleep(1)
-		w = find_window() # just try again
+		# just try again
 	assert w is not None
 	do_in_mainthread(lambda: w.tabs()[0].setURL_(url))
 	return w
 
-def make_dock_icon(baseurl, click_handler, quit_handler):
-	from subprocess import Popen, PIPE, STDOUT
-	myscript = __file__
-	if os.path.islink(myscript): myscript = os.readlink(myscript)
+def make_dock_icon(title, webappid, url):
+	import os.path
+	appdir = os.path.expanduser("~/Library/Application Support/ChromeWebApps/Apps")
+	try: os.makedirs(appdir)
+	except: pass
+	
+	def filterStdChars(c):
+		if c.isdigit(): return True
+		if c.isalpha(): return True
+		return False
+	def filterFilenameChars(c):
+		if filterStdChars(c): return True
+		if c in " ._-": return True
+		return False
+	def filterBundleNameChars(c):
+		if filterStdChars(c): return True
+		if c in " _-": return True
+		return False
+	def filterBundleIdentifierChars(c):
+		if filterStdChars(c): return True
+		return False
+	def getAppPath(appname): return appdir + "/" + appname + ".app"
+	
+	appname = "".join(filter(filterFilenameChars, title))
+	if appname == "": appname = "Unnamed website"
+	if os.path.exists(getAppPath(appname)):
+		import itertools
+		for i in itertools.count(2):
+			newappname = appname + " " + str(i)
+			if not os.path.exists(getAppPath(newappname)):
+				appname = newappname
+				break
+	apppath = getAppPath(appname)
+	bundleName = "".join(filter(filterBundleNameChars, title))
+	bundleIdentifier = "org.ChromeWebApps." + "".join(filter(filterBundleIdentifierChars, title))
+	
 	scriptfn = os.path.dirname(myscript) + "/dockicon.py"
-	p = Popen(["python", scriptfn, baseurl], stdin=PIPE, stdout=PIPE)
-
-	import threading
-	class ThreadWorker(threading.Thread):
-		def __init__(self):
-			super(ThreadWorker, self).__init__()
-			self.setDaemon(True)
-			self.quit_handler = quit_handler
-			
-		def run(self):
-			while True:
-				l = p.stdout.readline().strip("\n")
-				if not l: break
-				if l == "click":
-					try: click_handler()
-					except: traceback.print_exc()
-			p.wait()
-			self.quit_handler()
-			
-	stdout_worker = ThreadWorker()
-	stdout_worker.start()
-	def kill_overwrite():
-		stdout_worker.quit_handler = lambda: None
-		Popen.kill(p)
-	p.kill = kill_overwrite
-	return p
+	
+	from createAppBundle import createAppBundle
+	createAppBundle(apppath, scriptfn, {
+		"CFBundleName": bundleName,
+		"CFBundleIdentifier": bundleIdentifier,
+		"WebAppURL": url,
+		"WebAppId": webappid
+		})
+	
+	from subprocess import Popen, PIPE, STDOUT
+	Popen(["open", apppath])
 
 def find_close_widget(w):
 	if isinstance(w, WindowAppleScript): w = w.nativeHandle()
@@ -372,24 +395,28 @@ def openWebApp(url):
 		# this function is supposed to not run in the main thread
 		do_in_otherthread(lambda: openWebApp(url))
 		return
+	
 	w = openPopupWindow(url)
+	title = ""
+	for _ in xrange(10):
+		title = w.activeTab().title()
+		if title: break
+		time.sleep(1) # wait a bit and try again
+	webappid = url + " " + str(time.time())
+	
+	make_dock_icon(title, webappid, url)
+
 	w = w.nativeHandle()
-	def dock_click_handler():
-		w.setIsVisible_(1)
-		w.delegate().activate()
-	def dock_quit_handler():
-		w.close()
-	p = make_dock_icon(url, lambda: do_in_mainthread(dock_click_handler), lambda: do_in_mainthread(dock_quit_handler))
+	registeredWebApps[webappid] = w
 	def w_close_handler():
 		# if the dock icon helper app exited, we can close the window
-		if p.returncode is not None:
+		if not webappid in registeredWebApps:
 			remove_close_callback(w)
 			return True
 		w.setIsVisible_(0)
 		return False
 	install_close_callback(w, w_close_handler)
-	webappid = url + " " + str(time.time())
-	registeredWebApps[webappid] = w
+	
 	return w
 
 def make_webapp():
@@ -399,14 +426,19 @@ def make_webapp():
 		return
 	openWebApp(url)
 
-def onDockClick(webappid):
+def onDockClick(webappid, url):
+	if not webappid in registeredWebApps:
+		# TODO: create...
+		return
 	w = registeredWebApps[webappid]
 	w.setIsVisible_(1)
 	w.delegate().activate()
 
 def onDockExit(webappid):
 	w = registeredWebApps[webappid]
-	w.close()	
+	remove_close_callback(w)
+	del registeredWebApps[webappid]
+	w.close()
 
 try:
 	class PyMenuHandler(NSObject):

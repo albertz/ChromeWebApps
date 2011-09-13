@@ -8,8 +8,6 @@ from pprint import pprint
 
 bundlePath = os.path.dirname(__file__) + "/../.."
 
-#sys.stdout = sys.stderr # direct output in Console
-
 import signal
 signal.signal(signal.SIGABRT, lambda *args: os._exit(1))
 signal.signal(signal.SIGPIPE, lambda *args: os._exit(1))
@@ -20,6 +18,7 @@ import objc
 
 bundleInfoDict = NSBundle.bundleWithPath_(bundlePath).infoDictionary()
 webAppURL = bundleInfoDict["WebAppURL"]
+webAppId = bundleInfoDict["WebAppId"]
 
 import aem
 
@@ -44,6 +43,12 @@ def execPy(cmd):
 def openPopupWindow(url):
 	execPy("openPopupWindow(%s)" % repr(url))
 
+def onDockClick():
+	execPy("onDockClick(%s, %s)" % (repr(webAppId), repr(webAppURL)))
+
+def onExit():
+	execPy("onDockExit(%s)" % repr(webAppId))
+
 def setIcon(baseurl):
 	url = NSURL.URLWithString_relativeToURL_("/favicon.ico", NSURL.URLWithString_(baseurl))
 	img = NSImage.alloc().initWithContentsOfURL_(url)
@@ -54,18 +59,16 @@ def setIcon(baseurl):
 class MyAppDelegate(NSObject):
 	def applicationShouldHandleReopen_hasVisibleWindows_(self, app, flag):
 		try:
-			print "click"
-			sys.stdout.flush()
-			openPopupWindow(webAppURL)
+			onDockClick()
 		except: # eg. sigpipe
 			sys.excepthook(*sys.exc_info())
 			#os._exit(1)
 			
 	def applicationDidFinishLaunching_(self, notification):
 		menu = NSMenu.alloc().init()
-		menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('View Trash', 'view:', ''))
-		menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('Empty Trash', 'empty:', ''))
-		menu.addItem_(NSMenuItem.separatorItem())
+		#menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('View Trash', 'view:', ''))
+		#menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('Empty Trash', 'empty:', ''))
+		#menu.addItem_(NSMenuItem.separatorItem())
 		menu.addItem_(NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('Quit', 'terminate:', 'q'))
 		
 		windowMenuItem = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('Foobar', None, '')
@@ -78,8 +81,13 @@ class MyAppDelegate(NSObject):
 		except: pass
 		
 		print "Dock icon initialized"
-		openPopupWindow(webAppURL)
-		
+	
+	def applicationWillTerminate_(self, sender):
+		try:
+			onExit()
+		except: # eg. sigpipe
+			sys.excepthook(*sys.exc_info())
+	
 	def open_window(self):
 		self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
 			NSMakeRect(100,50,300,400),
