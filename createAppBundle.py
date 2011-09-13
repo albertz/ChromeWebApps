@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+# example: /createAppBundle.py foo.app dockicon.py "{'CFBundleIdentifier':'org.foo.foo','CFBundleName':'Foo'}"
+
 import sys, os, os.path
 
 assert len(sys.argv) > 3
