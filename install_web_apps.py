@@ -247,6 +247,11 @@ class BrowserCrApplication(objc.Category(BrowserCrApplication)):
 	def myTerminate_(self, sender):
 		try: print "myTerminate_", self, sender
 		except: pass
+		try:
+			handle_exit()
+		except Exception, e:
+			print "Exception:", e
+			traceback.print_exc()
 		self.myTerminate_(sender) # this is no recursion when we exchanged the methods
 
 appShouldHandleReopenSig = "c16@0:4@8c12"
@@ -501,6 +506,13 @@ def install_webapp_handlers():
 	register_scripting()
 	install_menu()
 	print >>sys.stderr, "webapp handlers installed"
+
+def handle_exit():
+	# cleanup everything. close all hidden windows
+	for w in registeredWebApps.itervalues():
+		remove_close_callback(w)
+		w.close()
+	registeredWebApps.clear()
 
 if __name__ == '__main__':
 	install_webapp_handlers()
