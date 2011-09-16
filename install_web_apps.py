@@ -24,6 +24,7 @@ _NSThemeCloseWidget = objc.lookUpClass("_NSThemeCloseWidget")
 NSMenuItem = objc.lookUpClass("NSMenuItem")
 HoverCloseButton = objc.lookUpClass("HoverCloseButton")
 AppController = objc.lookUpClass("AppController")
+BrowserCrApplication = objc.lookUpClass("BrowserCrApplication")
 
 try:
 	class PyAsyncCallHelper(NSObject):
@@ -240,6 +241,14 @@ def my_signature(signature, **kw):
         return selector(func, **kw)
     return makeSignature
 
+appTerminateSig = "v12@0:4@8"
+class BrowserCrApplication(objc.Category(BrowserCrApplication)):
+	@my_signature(appTerminateSig)
+	def myTerminate_(self, sender):
+		try: print "myTerminate_", self, sender
+		except: pass
+		self.myTerminate_(sender) # this is no recursion when we exchanged the methods
+
 appShouldHandleReopenSig = "c16@0:4@8c12"
 class AppController(objc.Category(AppController)):
 	@my_signature(appShouldHandleReopenSig)
@@ -269,10 +278,10 @@ class BrowserWindowController(objc.Category(BrowserWindowController)):
 
 	@my_signature(commandDispatchSig)
 	def myCommandDispatch_(self, cmd):
-		try: print "myCommandDispatch_", self, cmd
+		try: sys.stdout.write("myCommandDispatch_ %s %s %s\n" % (self, cmd, cmd.tag()))
 		except: pass # like <type 'exceptions.UnicodeEncodeError'>: 'ascii' codec can't encode character u'\u2026' in position 37: ordinal not in range(128)
 		if cmd.tag() == 34015: # IDC_CLOSE_TAB
-			if not check_close_callback(self): return			
+			if not check_close_callback(self): return
 		self.myCommandDispatch_(cmd)
 
 closeTabSig = "c12@0:4@8" # TabStripController.closeTab_.signature
@@ -333,6 +342,9 @@ def hook_into_commandDispatch():
 
 def hook_into_appShouldReopen():
 	method_exchange("AppController", "applicationShouldHandleReopen:hasVisibleWindows:", "myApplicationShouldHandleReopen:hasVisibleWindows:")
+
+def hook_into_appTerminate():
+	method_exchange("BrowserCrApplication", "terminate:", "myTerminate:")
 
 capi.backtrace.restype = c_int
 capi.backtrace.argtypes = (c_void_p, c_int)
@@ -485,6 +497,7 @@ def install_webapp_handlers():
 	hook_into_windowShouldClose()
 	hook_into_commandDispatch()
 	hook_into_appShouldReopen()
+	hook_into_appTerminate()
 	register_scripting()
 	install_menu()
 	print >>sys.stderr, "webapp handlers installed"
