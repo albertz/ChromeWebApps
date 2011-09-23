@@ -476,7 +476,18 @@ def onDockClick(webappid, url):
 	w = registeredWebApps[webappid]
 	w.setIsVisible_(1)
 	w.delegate().activate()
-
+	# For some reason, we need a short delay and thus this
+	# stupid indirect code.
+	def g():
+		w.orderFront_(None)
+		w.makeMainWindow()
+		w.makeKeyWindow()
+		w.makeKeyAndOrderFront_(None)
+	def f():
+		time.sleep(0.1)
+		do_in_mainthread(g, wait=False)
+	do_in_otherthread(f)
+	
 def onDockExit(webappid):
 	w = registeredWebApps[webappid]
 	remove_close_callback(w)
