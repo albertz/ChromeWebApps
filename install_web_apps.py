@@ -228,9 +228,14 @@ def check_close_callback(o):
 		remove_close_callback(o)
 	return True
 
+def isAppWindow(w):
+	if isinstance(w, WindowAppleScript):
+		w = w.nativeHandle()
+	return w in _close_callbacks_objsnet
+
 def visibleBrowserWindows():
 	ws = app.appleScriptWindows()
-	ws = [ w for w in ws if w.nativeHandle().isVisible() ]
+	ws = [ w for w in ws if w.nativeHandle().isVisible() and not isAppWindow(w) ]
 	return ws
 
 # copied from objc.signature to avoid warning
